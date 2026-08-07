@@ -20,6 +20,8 @@ export default defineEventHandler(async (event) => {
       models: Array.isArray(item.models) ? item.models : [],
       balance: item.balance || '',
       status: item.status || 'active',
+      sort: Number(item.sort) || 0,
+      desc: item.desc || '',
       remark: item.remark || ''
     })
     count++

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import {
   fetchStations, verifyPassword, createStation, updateStation,
-  deleteStation, refreshModels, healthCheck, setStatus, exportData, importData
+  deleteStation, refreshModels, probeModels, healthCheck, setStatus, exportData, importData
 } from '~/composables/useApi'
 
 // ============ 数据 ============
@@ -235,6 +235,7 @@ const filtered = computed(() => {
       s.baseURL?.toLowerCase().includes(q) ||
       s.siteURL?.toLowerCase().includes(q) ||
       (s.models || []).some((m) => m.toLowerCase().includes(q)) ||
+      s.desc?.toLowerCase().includes(q) ||
       s.remark?.toLowerCase().includes(q)
     )
   })
@@ -243,7 +244,27 @@ const filtered = computed(() => {
 // ===== 增删改 =====
 const showForm = ref(false)
 const editingId = ref(null)
-const form = ref({ name: '', baseURL: '', siteURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', remark: '' })
+const form = ref({ name: '', baseURL: '', siteURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', sort: 0, desc: '', remark: '' })
+
+// 表单内点击获取模型列表
+const probing = ref(false)
+async function doProbeModels() {
+  if (!form.value.baseURL.trim()) return showToast('请先填写 Base URL')
+  probing.value = true
+  try {
+    const { models } = await probeModels({
+      baseURL: form.value.baseURL,
+      apiKey: form.value.apiKey,
+      id: editingId.value || undefined
+    })
+    form.value.modelsText = models.join('\n')
+    showToast(`已获取 ${models.length} 个模型`)
+  } catch (e) {
+    showToast('获取失败：' + (e?.data?.message || e.message))
+  } finally {
+    probing.value = false
+  }
+}
 
 // 直达地址：后台未填写则回退使用 baseURL
 function siteLink(s) {
@@ -254,7 +275,7 @@ function siteLink(s) {
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', baseURL: '', siteURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', remark: '' }
+  form.value = { name: '', baseURL: '', siteURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', sort: 0, desc: '', remark: '' }
   showForm.value = true
 }
 function openEdit(s) {
@@ -262,7 +283,7 @@ function openEdit(s) {
   form.value = {
     name: s.name, baseURL: s.baseURL, siteURL: s.siteURL || '', apiKey: '', keyId: s.keyId,
     modelsText: (s.models || []).join('\n'), balance: s.balance || '',
-    status: s.status, remark: s.remark || ''
+    status: s.status, sort: s.sort ?? 0, desc: s.desc || '', remark: s.remark || ''
   }
   showForm.value = true
 }
@@ -270,7 +291,8 @@ async function save() {
   const payload = {
     name: form.value.name, baseURL: form.value.baseURL, siteURL: form.value.siteURL,
     apiKey: form.value.apiKey,
-    keyId: form.value.keyId || undefined, status: form.value.status, remark: form.value.remark,
+    keyId: form.value.keyId || undefined, status: form.value.status,
+    sort: Number(form.value.sort) || 0, desc: form.value.desc, remark: form.value.remark,
     balance: form.value.balance,
     models: form.value.modelsText.split('\n').map((x) => x.trim()).filter(Boolean)
   }
@@ -400,7 +422,7 @@ onMounted(() => {
       </div>
 
       <div class="toolbar">
-        <input class="search" v-model="search" placeholder="🔍 搜索名称 / 地址 / 模型 / 备注" />
+        <input class="search" v-model="search" placeholder="🔍 搜索名称 / 地址 / 模型 / 描述 / 备注" />
         <select v-model="filterStatus" class="filter">
           <option value="all">全部状态</option>
           <option value="active">仅可用</option>
@@ -420,6 +442,7 @@ onMounted(() => {
               {{ s.status === 'active' ? '可用' : '停用' }}
             </span>
           </div>
+          <p class="card-desc" v-if="s.desc" :title="s.desc">{{ s.desc }}</p>
           <div class="field"><span class="k">地址</span>
             <span class="v mono" :title="s.baseURL" @click.stop="copyText(s.baseURL)">{{ s.baseURL }}</span>
           </div>
@@ -471,15 +494,24 @@ onMounted(() => {
         <input v-model="form.apiKey" placeholder="sk-..." :type="form.apiKey ? 'text' : 'password'" />
         <label>标识 (Key ID，留空自动生成 UUID)</label>
         <input v-model="form.keyId" placeholder="留空自动生成" />
-        <label>模型列表（每行一个）</label>
+        <div class="label-row">
+          <label>模型列表（每行一个）</label>
+          <button class="btn-mini" @click="doProbeModels" :disabled="probing">
+            {{ probing ? '获取中…' : '获取模型列表' }}
+          </button>
+        </div>
         <textarea v-model="form.modelsText" rows="3" placeholder="gpt-4&#10;gpt-3.5-turbo"></textarea>
         <label>余额</label>
         <input v-model="form.balance" placeholder="可选" />
+        <label>排序（数值越小越靠前）</label>
+        <input v-model.number="form.sort" type="number" placeholder="0" />
         <label>状态</label>
         <select v-model="form.status">
           <option value="active">可用</option>
           <option value="inactive">停用</option>
         </select>
+        <label>描述</label>
+        <textarea v-model="form.desc" rows="2" placeholder="展示在卡片上的简介，可选"></textarea>
         <label>备注</label>
         <textarea v-model="form.remark" rows="2" placeholder="可选"></textarea>
         <div class="modal-actions">
@@ -497,6 +529,10 @@ onMounted(() => {
           <button class="x" @click="detail = null">✕</button>
         </div>
         <p class="hint"><span :class="['badge', detail.status]">{{ detail.status === 'active' ? '可用' : '停用' }}</span></p>
+        <template v-if="detail.desc">
+          <label>描述</label>
+          <p class="hint">{{ detail.desc }}</p>
+        </template>
         <label>接口地址</label>
         <div class="field"><span class="v mono" @click="copyText(detail.baseURL)" style="cursor:pointer">{{ detail.baseURL }}</span></div>
         <label>直达地址{{ detail.siteURL ? '' : '（未填写，默认用接口地址）' }}</label>

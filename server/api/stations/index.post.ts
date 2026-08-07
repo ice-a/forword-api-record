@@ -21,6 +21,8 @@ export default defineEventHandler(async (event) => {
     models: finalModels,
     balance: body.balance || '',
     status: body.status || 'active',
+    sort: Number(body.sort) || 0,
+    desc: body.desc || '',
     remark: body.remark || ''
   })
   return sanitize(st)

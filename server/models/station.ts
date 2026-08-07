@@ -10,6 +10,10 @@ const stationSchema = new mongoose.Schema({
   models: { type: [String], default: [] },
   balance: { type: String, default: '' },
   status: { type: String, default: 'active' },
+  // 排序权重：数值越小越靠前，相同则按创建时间倒序
+  sort: { type: Number, default: 0 },
+  // 描述：展示在卡片与详情中
+  desc: { type: String, default: '' },
   remark: { type: String, default: '' }
 }, { timestamps: true })
 

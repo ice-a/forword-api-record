@@ -55,6 +55,15 @@ export function refreshModels(id: string) {
   })
 }
 
+// 表单内即时探测模型（无需先保存站点）
+export function probeModels(data: { baseURL: string; apiKey?: string; id?: string }) {
+  return $fetch<{ models: string[] }>(`${API_BASE}/stations/probe-models`, {
+    method: 'POST',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+
 export function healthCheck(id: string) {
   return $fetch(`${API_BASE}/stations/${id}/health`, { method: 'POST' })
 }
