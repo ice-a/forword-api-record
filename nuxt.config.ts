@@ -2,6 +2,8 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-08-01',
   devtools: { enabled: false },
+  // 纯 SPA 模式：后台管理工具无需 SEO，避免 SSR 水合闪烁与浏览器 API 报错
+  ssr: false,
   css: ['~/assets/css/main.css'],
   app: {
     head: {
