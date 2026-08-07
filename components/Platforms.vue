@@ -62,7 +62,7 @@ const tools = [
     name: 'Grok',
     desc: 'xAI Grok 模型（OpenAI 兼容接入）',
     tags: ['API', 'xAI'],
-    install: '使用 OpenAI 兼容客户端 / SDK',
+    install: 'npm i -g @xai-official/grok@latest',
     home: 'https://x.ai/api',
     detail: [
       'Grok 提供 OpenAI 兼容接口，可直接复用时中转站：',

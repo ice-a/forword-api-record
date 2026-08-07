@@ -233,6 +233,7 @@ const filtered = computed(() => {
     return (
       s.name?.toLowerCase().includes(q) ||
       s.baseURL?.toLowerCase().includes(q) ||
+      s.siteURL?.toLowerCase().includes(q) ||
       (s.models || []).some((m) => m.toLowerCase().includes(q)) ||
       s.remark?.toLowerCase().includes(q)
     )
@@ -242,16 +243,24 @@ const filtered = computed(() => {
 // ===== 增删改 =====
 const showForm = ref(false)
 const editingId = ref(null)
-const form = ref({ name: '', baseURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', remark: '' })
+const form = ref({ name: '', baseURL: '', siteURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', remark: '' })
+
+// 直达地址：后台未填写则回退使用 baseURL
+function siteLink(s) {
+  const u = (s?.siteURL || '').trim() || (s?.baseURL || '').trim()
+  if (!u) return ''
+  return /^https?:\/\//i.test(u) ? u : `https://${u}`
+}
+
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', baseURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', remark: '' }
+  form.value = { name: '', baseURL: '', siteURL: '', apiKey: '', keyId: '', modelsText: '', balance: '', status: 'active', remark: '' }
   showForm.value = true
 }
 function openEdit(s) {
   editingId.value = s._id
   form.value = {
-    name: s.name, baseURL: s.baseURL, apiKey: '', keyId: s.keyId,
+    name: s.name, baseURL: s.baseURL, siteURL: s.siteURL || '', apiKey: '', keyId: s.keyId,
     modelsText: (s.models || []).join('\n'), balance: s.balance || '',
     status: s.status, remark: s.remark || ''
   }
@@ -259,7 +268,8 @@ function openEdit(s) {
 }
 async function save() {
   const payload = {
-    name: form.value.name, baseURL: form.value.baseURL, apiKey: form.value.apiKey,
+    name: form.value.name, baseURL: form.value.baseURL, siteURL: form.value.siteURL,
+    apiKey: form.value.apiKey,
     keyId: form.value.keyId || undefined, status: form.value.status, remark: form.value.remark,
     balance: form.value.balance,
     models: form.value.modelsText.split('\n').map((x) => x.trim()).filter(Boolean)
@@ -423,6 +433,7 @@ onMounted(() => {
             <span class="model-tag more" v-if="(s.models || []).length > 5" :title="(s.models || []).join(', ')">+{{ (s.models || []).length - 5 }}</span>
           </div>
           <div class="card-actions" v-if="isAdmin" @click.stop>
+            <a class="btn-ghost" :href="siteLink(s)" target="_blank" rel="noopener noreferrer">直达 ↗</a>
             <button class="btn-ghost" @click="openEdit(s)">编辑</button>
             <button class="btn-ghost" @click="doRefresh(s)">刷新模型</button>
             <button class="btn-ghost" @click="pingOne(s._id)" :disabled="healthMap[s._id] === 'checking'">测活</button>
@@ -430,6 +441,7 @@ onMounted(() => {
             <button class="btn-primary" @click="useInImage(s)">生图使用 ›</button>
           </div>
           <div class="card-actions" v-else @click.stop>
+            <a class="btn-ghost" :href="siteLink(s)" target="_blank" rel="noopener noreferrer">直达 ↗</a>
             <button class="btn-ghost" @click="pingOne(s._id)" :disabled="healthMap[s._id] === 'checking'">测活</button>
             <button class="btn-ghost" @click="openDetail(s)">查看详情</button>
             <button class="btn-primary" @click="useInImage(s)">生图使用 ›</button>
@@ -453,6 +465,8 @@ onMounted(() => {
         <input v-model="form.name" placeholder="如：我的中转站A" />
         <label>Base URL</label>
         <input v-model="form.baseURL" placeholder="https://xxx/v1" />
+        <label>直达地址（留空则默认使用 Base URL）</label>
+        <input v-model="form.siteURL" placeholder="https://xxx.com" />
         <label>API Key</label>
         <input v-model="form.apiKey" placeholder="sk-..." :type="form.apiKey ? 'text' : 'password'" />
         <label>标识 (Key ID，留空自动生成 UUID)</label>
@@ -485,6 +499,10 @@ onMounted(() => {
         <p class="hint"><span :class="['badge', detail.status]">{{ detail.status === 'active' ? '可用' : '停用' }}</span></p>
         <label>接口地址</label>
         <div class="field"><span class="v mono" @click="copyText(detail.baseURL)" style="cursor:pointer">{{ detail.baseURL }}</span></div>
+        <label>直达地址{{ detail.siteURL ? '' : '（未填写，默认用接口地址）' }}</label>
+        <div class="field">
+          <a class="v mono" :href="siteLink(detail)" target="_blank" rel="noopener noreferrer">{{ siteLink(detail) }}</a>
+        </div>
         <label>标识 (Key ID)</label>
         <div class="keyid-chip">{{ detail.keyId }}</div>
         <label>余额</label>

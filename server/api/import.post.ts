@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
     await Station.create({
       name: item.name || '未命名',
       baseURL: item.baseURL,
+      siteURL: item.siteURL || '',
       apiKey: item.apiKey || '',
       keyId: item.keyId || crypto.randomUUID(),
       models: Array.isArray(item.models) ? item.models : [],

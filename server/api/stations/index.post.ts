@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   const st = await Station.create({
     name: body.name,
     baseURL: body.baseURL,
+    siteURL: body.siteURL || '',
     apiKey: body.apiKey || '',
     keyId: body.keyId || crypto.randomUUID(),
     models: finalModels,

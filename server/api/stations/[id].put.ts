@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   const update: any = {}
-  for (const k of ['name', 'baseURL', 'apiKey', 'keyId', 'models', 'balance', 'status', 'remark']) {
+  for (const k of ['name', 'baseURL', 'siteURL', 'apiKey', 'keyId', 'models', 'balance', 'status', 'remark']) {
     if (body[k] !== undefined) update[k] = body[k]
   }
 
