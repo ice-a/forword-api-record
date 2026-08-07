@@ -9,7 +9,7 @@ import {
 const stations = ref([])
 const loading = ref(false)
 const toast = ref('')
-const isAdmin = ref(!!sessionStorage.getItem('admin_pwd'))
+const isAdmin = ref(false)
 const tab = ref('stations') // stations | platforms | image
 
 // ===== 主题配色 =====
@@ -321,6 +321,7 @@ async function importDataFile(e) {
 }
 
 onMounted(() => {
+  isAdmin.value = !!sessionStorage.getItem('admin_pwd')
   try {
     const saved = JSON.parse(localStorage.getItem(THEME_KEY) || 'null')
     if (saved?.accent) { customColor.value = saved.accent; applyAccent(saved.accent, saved.accent2) }
