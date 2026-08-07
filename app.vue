@@ -167,7 +167,7 @@ async function load() {
 const healthMap = ref({})
 const importFile = ref(null)
 
-// 加载后逐一 ping baseURL：失败 -> 置为停用；原本停用但已恢复 -> 置为可用
+// 加载后逐一测活：探测「直达地址」（未填则回退 Base URL）是否连通；不通 -> 停用，恢复 -> 启用
 async function pingAll() {
   const list = stations.value
   await Promise.all(list.map(async (s) => {
