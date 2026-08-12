@@ -15,19 +15,18 @@ Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Ser
 
 ```
 .
-├── .env                      # 环境变量（MONGODB_URI / ADMIN_PASSWORD / IMGBED_*）
-├── nuxt.config.ts            # Nuxt 配置（全局样式 / runtimeConfig / vercel preset）
-├── app.vue                   # 前端根组件（卡片 + 后台 + 主题 + 背景 + 生图入口）
+├── .env                      # 环境变量（MONGODB_URI / ADMIN_PASSWORD）
+├── nuxt.config.ts            # Nuxt 配置（全局样式 / runtimeConfig / vercel preset / favicon）
+├── app.vue                   # 前端根组件（卡片 + 后台 + 主题 + 背景）
 ├── assets/css/main.css       # 全局样式（科技感 UI）
 ├── components/
-│   ├── ImageGen.vue          # AI 生图组件
 │   └── Platforms.vue         # 工具配置组件
 ├── composables/useApi.ts     # 前端 API 调用封装（$fetch）
 └── server/
     ├── models/station.ts     # Mongoose Schema
     ├── utils/db.ts           # MongoDB 连接复用
-    ├── utils/config.ts       # 服务端配置（密码 / 图床）
-    ├── utils/stations.ts     # 鉴权 / 脱敏 / 拉模型 / 图床上传
+    ├── utils/config.ts       # 服务端配置（密码）
+    ├── utils/stations.ts     # 鉴权 / 脱敏 / 拉模型
     └── api/                  # Nitro 路由（GET/POST/PUT/DELETE）
         ├── stations/
         │   ├── index.get.ts / index.post.ts
@@ -36,8 +35,7 @@ Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Ser
         │   ├── [id]/health.post.ts        # 公开探活
         │   └── [id]/status.post.ts        # 公开更新状态
         ├── auth/verify.post.ts
-        ├── export.get.ts / import.post.ts
-        └── image/generate.post.ts
+        └── export.get.ts / import.post.ts
 ```
 
 ## 快速开始（本地）
@@ -53,8 +51,6 @@ Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Ser
    ```bash
    MONGODB_URI=mongodb://localhost:27017/relay_station
    ADMIN_PASSWORD=你的强密码
-   IMGBED_URL=https://img.020417.xyz
-   IMGBED_AUTH=muzi
    ```
 
 3. 本地开发
@@ -81,14 +77,12 @@ Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Ser
    |------|------|
    | `MONGODB_URI` | MongoDB 连接地址（必填） |
    | `ADMIN_PASSWORD` | 后台管理密码（必填） |
-   | `IMGBED_URL` | 图床地址 | 
-   | `IMGBED_AUTH` | 图床授权码 |
 
 3. 构建命令（默认）：`nuxt build`；输出目录由 Nitro 自动处理（`nitro.preset: 'vercel'`）。
 4. 域名：在 Vercel 绑定 `api.020417.xyz`，并将该域名的 DNS 指向 Vercel（CNAME → `cname.vercel-dns.com`）。
 5. 部署完成后：`npx vercel deploy --prebuilt` 或连接 Git 自动部署。
 
-> MongoDB 连接在服务端每次冷启动复用全局连接；Vercel 函数超时默认 10s，生图接口已设 60s abort。如需更长超时，可在 Vercel 函数为 `/api/image/generate` 配置 `maxDuration`。
+> MongoDB 连接在服务端每次冷启动复用全局连接；Vercel 函数超时默认 10s，列表/健康接口已设 15s abort。如需更长超时，可在 Vercel 函数为对应接口配置 `maxDuration`。
 
 ## 功能说明
 
@@ -101,15 +95,14 @@ Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Ser
 - **主题配色**：顶栏「主题」可切换 6 套预设或自定义主色，实时生效并持久化到 localStorage。
 - **背景图**：顶栏「背景」可选图片 API 随机获取，或粘贴自定义图片 URL，持久化到 localStorage。
 - **平台配置页**：展示 Claude Code / Codex / OpenCode / Gemini / Grok / CCSwitch 的安装方式与配置步骤，一键复制。
-- **AI 生图页**：选中转站后带入 baseURL，key 可改（留空用已存），model 需点击「获取模型」。生图走服务端代理，前端不传原始 key；默认生图后上传图床返回公开 URL。生图历史存 localStorage。
 - **搜索 / 筛选 / 统计**：按名称、地址、模型、备注搜索；按状态筛选；顶部统计总数 / 可用 / 停用 / 模型数。
 - **导入导出**：后台可导出 JSON（脱敏）或导入。
 - **后台管理**：右上角「后台登录」，输入 `ADMIN_PASSWORD` 后增删改查。
 
 ## 安全说明
 
-- 前端永不接触原始 API Key 与图床授权码；写操作均经服务端 `x-admin-password` 鉴权。
-- 列表/生图接口经服务端 `sanitize()` 剔除 `apiKey`，仅返回 `keyId` 标识。
+- 前端永不接触原始 API Key；写操作均经服务端 `x-admin-password` 鉴权。
+- 列表接口经服务端 `sanitize()` 剔除 `apiKey`，仅返回 `keyId` 标识。
 - 探活与状态更新接口为公开，但仅做连通性探测与状态位切换，不返回任何密钥。
 
 ## API 一览
@@ -126,4 +119,3 @@ Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Ser
 | POST | `/api/stations/:id/status` | 否 | 根据探活结果更新状态 |
 | GET | `/api/export` | 是 | 导出（脱敏） |
 | POST | `/api/import` | 是 | 导入 JSON |
-| POST | `/api/image/generate` | 是 | 生图代理 |

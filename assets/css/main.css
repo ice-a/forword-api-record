@@ -150,7 +150,10 @@ a.v.mono:hover { text-decoration: underline; }
   border: 1px solid rgba(79,209,255,0.25); border-radius: 8px; padding: 3px 9px;
 }
 
-.card-actions { display: flex; gap: 9px; margin-top: 16px; }
+.card-actions { display: flex; gap: 9px; margin-top: 16px; flex-wrap: nowrap; }
+.card-actions .btn-ghost,
+.card-actions .btn-danger,
+.card-actions .btn-primary { white-space: nowrap; flex: 0 0 auto; }
 
 .modal-mask {
   position: fixed; inset: 0; background: rgba(3, 6, 14, 0.7);

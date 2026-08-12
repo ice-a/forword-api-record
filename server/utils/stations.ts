@@ -35,26 +35,3 @@ export async function fetchModels(baseURL: string, apiKey: string) {
     clearTimeout(t)
   }
 }
-
-// 上传到图床（CloudFlare-ImgBed）
-export async function uploadToImgBed(base64: string) {
-  const { imgbedUrl, imgbedAuth } = getConfig()
-  const mimeMatch = base64.match(/^data:(.*?);base64,/)
-  const mime = mimeMatch ? mimeMatch[1] : 'image/png'
-  const pure = base64.replace(/^data:.*?;base64,/, '')
-  const buf = Buffer.from(pure, 'base64')
-  const blob = new Blob([buf], { type: mime })
-
-  const form = new FormData()
-  form.append('file', blob, 'image.png')
-
-  const r = await fetch(`${imgbedUrl}/upload?authCode=${encodeURIComponent(imgbedAuth)}`, {
-    method: 'POST',
-    body: form
-  })
-  const data = await r.json()
-  let url = data?.result?.source || data?.result?.src || (data?.result && data.result[0]?.src)
-  if (!url && data?.result?.publicUrl) url = data.result.publicUrl
-  if (!url) url = `${imgbedUrl}/file/${data?.result?.key || ''}`
-  return url
-}

@@ -40,14 +40,6 @@ export function deleteStation(id: string) {
   })
 }
 
-export function generateImage(data: any) {
-  return $fetch(`${API_BASE}/image/generate`, {
-    method: 'POST',
-    headers: { 'x-admin-password': getToken() },
-    body: data
-  })
-}
-
 export function refreshModels(id: string) {
   return $fetch(`${API_BASE}/stations/${id}/refresh-models`, {
     method: 'POST',

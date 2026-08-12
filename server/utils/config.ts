@@ -2,8 +2,6 @@
 export function getConfig() {
   const rc = useRuntimeConfig()
   return {
-    adminPassword: rc.adminPassword,
-    imgbedUrl: rc.imgbedUrl,
-    imgbedAuth: rc.imgbedAuth
+    adminPassword: rc.adminPassword
   }
 }

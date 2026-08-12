@@ -11,7 +11,10 @@ export default defineEventHandler(async (event) => {
 
   const models = await fetchModels(st.baseURL, st.apiKey)
   const finalModels = models && models.length ? models : ['gpt-3.5-turbo', 'gpt-4']
-  st.models = finalModels
-  await st.save()
-  return sanitize(st)
+  const updated = await Station.findByIdAndUpdate(
+    id,
+    { $set: { models: finalModels } },
+    { new: true }
+  )
+  return sanitize(updated)
 })

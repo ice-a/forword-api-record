@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   fetchStations, verifyPassword, createStation, updateStation,
   deleteStation, refreshModels, probeModels, healthCheck, setStatus, exportData, importData
@@ -10,7 +10,7 @@ const stations = ref([])
 const loading = ref(false)
 const toast = ref('')
 const isAdmin = ref(!!sessionStorage.getItem('admin_pwd'))
-const tab = ref('stations') // stations | platforms | image
+const tab = ref('stations') // stations | platforms
 
 // ===== 主题配色 =====
 const THEME_KEY = 'relay_theme_accent'
@@ -320,12 +320,6 @@ async function doRefresh(s) {
 // ===== 详情弹框 =====
 const detail = ref(null)
 function openDetail(s) { detail.value = s }
-function useInImage(s) {
-  detail.value = null
-  tab.value = 'image'
-  nextTick(() => imageRef.value?.pickStation(s))
-}
-const imageRef = ref(null)
 
 // ===== 导入导出 =====
 async function exportDataFile() {
@@ -409,7 +403,6 @@ onMounted(() => {
     <nav class="tabs">
       <button :class="['tab', tab === 'stations' && 'on']" @click="tab = 'stations'">中转站</button>
       <button :class="['tab', tab === 'platforms' && 'on']" @click="tab = 'platforms'">工具配置</button>
-      <button :class="['tab', tab === 'image' && 'on']" @click="tab = 'image'">生图</button>
     </nav>
 
     <!-- 中转站 -->
@@ -442,13 +435,13 @@ onMounted(() => {
               {{ s.status === 'active' ? '可用' : '停用' }}
             </span>
           </div>
-          <p class="card-desc" v-if="s.desc" :title="s.desc">{{ s.desc }}</p>
           <div class="field"><span class="k">地址</span>
             <span class="v mono" :title="s.baseURL" @click.stop="copyText(s.baseURL)">{{ s.baseURL }}</span>
           </div>
           <div class="field"><span class="k">标识</span>
             <span class="keyid-chip" :title="s.keyId">{{ s.keyId }}</span>
           </div>
+          <p class="card-desc" v-if="s.desc" :title="s.desc">{{ s.desc }}</p>
           <div class="field" v-if="s.balance"><span class="k">余额</span><span class="v">{{ s.balance }}</span></div>
           <div class="models">
             <span class="model-tag" v-for="(m, i) in (s.models || []).slice(0, 5)" :key="m"
@@ -461,13 +454,11 @@ onMounted(() => {
             <button class="btn-ghost" @click="doRefresh(s)">刷新模型</button>
             <button class="btn-ghost" @click="pingOne(s._id)" :disabled="healthMap[s._id] === 'checking'">测活</button>
             <button class="btn-danger" @click="remove(s)">删除</button>
-            <button class="btn-primary" @click="useInImage(s)">生图使用 ›</button>
           </div>
           <div class="card-actions" v-else @click.stop>
             <a class="btn-ghost" :href="siteLink(s)" target="_blank" rel="noopener noreferrer">直达 ↗</a>
             <button class="btn-ghost" @click="pingOne(s._id)" :disabled="healthMap[s._id] === 'checking'">测活</button>
             <button class="btn-ghost" @click="openDetail(s)">查看详情</button>
-            <button class="btn-primary" @click="useInImage(s)">生图使用 ›</button>
           </div>
         </div>
       </transition-group>
@@ -475,9 +466,6 @@ onMounted(() => {
 
     <!-- 工具配置 -->
     <Platforms v-else-if="tab === 'platforms'" />
-
-    <!-- 生图 -->
-    <ImageGen v-else ref="imageRef" @toast="showToast" />
 
     <!-- 新增/编辑弹框 -->
     <div class="modal-mask" v-if="showForm" @click.self="showForm = false">
@@ -552,7 +540,6 @@ onMounted(() => {
         <p class="hint">{{ detail.remark || '—' }}</p>
         <div class="modal-actions">
           <button class="btn-ghost" @click="detail = null">关闭</button>
-          <button class="btn-primary" @click="useInImage(detail)">在生图页使用此站 ›</button>
         </div>
       </div>
     </div>
