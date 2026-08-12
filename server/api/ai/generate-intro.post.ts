@@ -1,57 +1,54 @@
-import { defineEventHandler, readBody, createError } from 'h3'
-import { getDb } from '../../utils/db'
+import { createError, defineEventHandler, readBody } from 'h3'
 import { requireAdmin } from '../../utils/stations'
-import { Station } from '../../models/station'
+import { resolveGlobalAi } from '~/server/utils/globalAi'
+import { callChat } from '../../utils/llm'
+import { parseAiJson, asString, asStringArray, assertHasContent } from '../../utils/aiJson'
 
-// 调用已配置的中转站，为 skill 生成一段简洁中文简介
 export default defineEventHandler(async (event) => {
-  requireAdmin(event)
-  await getDb()
+  await requireAdmin(event)
   const body = await readBody(event)
-  const name = (body?.name || '').toString().trim()
-  const web = (body?.web || '').toString().trim()
-  if (!name) throw createError({ statusCode: 400, message: '请提供 skill 名称' })
+  const name = asString(body.name)
+  const web = asString(body.web)
+  if (!name) throw createError({ statusCode: 400, message: '名称不能为空' })
 
-  // 选一个可用中转站（优先带模型列表的）
-  const station = await Station.findOne({ status: 'active', baseURL: { $ne: '' } })
-    .sort({ models: -1 })
-  if (!station) throw createError({ statusCode: 400, message: '暂无可用中转站，无法生成简介' })
-  if (!station.apiKey) throw createError({ statusCode: 400, message: '所选中转站未配置 API Key' })
+  const g = await resolveGlobalAi()
+  if (!g) throw createError({ statusCode: 400, message: '全局 AI 未配置，请先在「全局AI」设置可用 AI' })
+  // 模型优先级：请求指定 > 数据库/环境变量生效模型（models[0]，已含环境变量回退）
+  const model = (body.model || g?.models?.[0] || '').toString().trim()
+  if (!model) throw createError({ statusCode: 400, message: '未选择生成模型，请在「全局AI」设置中选择模型' })
 
-  const url = station.baseURL.replace(/\/$/, '') + '/v1/chat/completions'
-  const prompt =
-    `请用简体中文为一款名为「${name}」${web ? `（官网：${web}）` : ''}的 AI 工具/技能写一段不超过 60 字的产品简介，` +
-    `突出它的核心用途与特点，不要使用 Markdown，直接输出纯文本。`
+  const webLine = web ? `\n参考链接：${web}` : ''
+  const system = `你是资深技术文档助手。根据名称生成结构化的录入内容，必须只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块包裹，字段如下：
+{
+  "intro": "一句话中文简介（20-40字）",
+  "desc": "2-4 句中文说明，介绍它是什么、核心用途、适用人群"
+}
+要求：内容真实准确，不编造；如不确定具体信息写通用说明。`
 
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 30000)
+  const user = `名称：${name}${webLine}\n请生成该条目的录入内容（仅返回 JSON）。`
+
+  let raw: string
   try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${station.apiKey}`
-      },
-      body: JSON.stringify({
-        model: (station.models && station.models[0]) || 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: '你是一个擅长撰写简洁产品简介的助手。' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.6,
-        max_tokens: 200
-      }),
-      signal: ctrl.signal
-    })
-    if (!r.ok) throw createError({ statusCode: 502, message: `中转站返回错误 ${r.status}` })
-    const data = await r.json()
-    const text = data?.choices?.[0]?.message?.content?.trim()
-    if (!text) throw createError({ statusCode: 502, message: '中转站未返回内容' })
-    return { intro: text }
+    raw = await callChat({ baseURL: g.baseURL, apiKey: g.apiKey, model, system, user })
   } catch (e: any) {
-    if (e?.statusCode) throw e
-    throw createError({ statusCode: 502, message: '调用 AI 失败：' + (e?.message || '未知错误') })
-  } finally {
-    clearTimeout(t)
+    throw createError({ statusCode: 502, message: '调用 AI 失败：' + (e?.message || e) })
   }
+
+  let parsed: any
+  try {
+    parsed = parseAiJson(raw)
+  } catch (e: any) {
+    throw createError({ statusCode: 422, message: e.message || 'AI 返回内容解析失败' })
+  }
+
+  const result = {
+    intro: asString(parsed.intro),
+    desc: asString(parsed.desc)
+  }
+
+  // 强制性校验
+  assertHasContent(result, ['intro', 'desc'])
+  if (!result.intro) throw createError({ statusCode: 422, message: 'AI 未生成「简介」，请重试或手动填写' })
+
+  return result
 })

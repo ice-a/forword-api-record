@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { fetchTools, createTool, updateTool, deleteTool } from '~/composables/useApi'
+import { fetchTools, createTool, updateTool, deleteTool, generateTool, checkAiAvailable } from '~/composables/useApi'
 
 const isAdmin = ref(!!sessionStorage.getItem('admin_pwd'))
 const tools = ref([])
@@ -37,6 +37,8 @@ const filtered = computed(() => {
     )
   })
 })
+const activeCount = computed(() => tools.value.filter((t) => t.status !== 'inactive').length)
+const inactiveCount = computed(() => tools.value.filter((t) => t.status === 'inactive').length)
 
 // ===== 复制 =====
 async function copy(text) {
@@ -56,21 +58,24 @@ function close() { active.value = null }
 // ===== 增删改 =====
 const showForm = ref(false)
 const editingId = ref(null)
-const form = ref({ name: '', desc: '', tagsText: '', install: '', home: '', detailText: '', sort: 0, remark: '' })
+const form = ref({ name: '', desc: '', tagsText: '', install: '', home: '', detailText: '', sort: 0, status: 'active', remark: '' })
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', desc: '', tagsText: '', install: '', home: '', detailText: '', sort: 0, remark: '' }
+  form.value = { name: '', desc: '', tagsText: '', install: '', home: '', detailText: '', sort: 0, status: 'active', remark: '' }
   showForm.value = true
+  checkAi()
 }
 function openEdit(t) {
   editingId.value = t._id
   form.value = {
     name: t.name, desc: t.desc || '', tagsText: (t.tags || []).join(', '),
     install: t.install || '', home: t.home || '',
-    detailText: (t.detail || []).join('\n'), sort: t.sort ?? 0, remark: t.remark || ''
+    detailText: (t.detail || []).join('\n'), sort: t.sort ?? 0,
+    status: t.status || 'active', remark: t.remark || ''
   }
   showForm.value = true
+  checkAi()
 }
 async function save() {
   const payload = {
@@ -81,6 +86,7 @@ async function save() {
     home: form.value.home,
     detail: form.value.detailText.split('\n').map((x) => x.trim()).filter(Boolean),
     sort: Number(form.value.sort) || 0,
+    status: form.value.status,
     remark: form.value.remark
   }
   if (editingId.value) await updateTool(editingId.value, payload)
@@ -92,6 +98,31 @@ async function remove(t) {
   if (!confirm(`确认删除「${t.name}」？`)) return
   await deleteTool(t._id)
   load()
+}
+
+// ===== AI 生成内容 =====
+const genLoading = ref(false)
+const aiAvailable = ref(false)
+function checkAi() {
+  aiAvailable.value = false
+  checkAiAvailable().then(() => { aiAvailable.value = true }).catch(() => { aiAvailable.value = false })
+}
+async function doGenerate() {
+  if (!form.value.name.trim()) return showToast('请先填写工具名称')
+  genLoading.value = true
+  try {
+    const r = await generateTool({ name: form.value.name, home: form.value.home })
+    const filled = []
+    if (r.desc) { form.value.desc = r.desc; filled.push('描述') }
+    if (r.tags?.length) { form.value.tagsText = r.tags.join(', '); filled.push('标签') }
+    if (r.detail?.length) { form.value.detailText = r.detail.join('\n'); filled.push('详细步骤') }
+    if (!filled.length) return showToast('AI 未返回有效内容，请重试或手动填写')
+    showToast('已填入：' + filled.join(' / ') + '（生成内容可修改后保存）')
+  } catch (e) {
+    showToast('生成失败：' + (e?.data?.message || e.message))
+  } finally {
+    genLoading.value = false
+  }
 }
 
 onMounted(load)
@@ -108,6 +139,12 @@ onMounted(load)
     </div>
     <div class="toolbar" v-else>
       <input class="search" v-model="search" placeholder="🔍 搜索工具名称 / 描述 / 标签" />
+    </div>
+
+    <div class="stat-bar">
+      <span class="stat-item">总数 <b>{{ tools.length }}</b></span>
+      <span class="stat-item ok">可用 <b>{{ activeCount }}</b></span>
+      <span class="stat-item off">停用 <b>{{ inactiveCount }}</b></span>
     </div>
 
     <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
@@ -133,6 +170,11 @@ onMounted(load)
         <div class="card-actions" v-if="isAdmin" @click.stop>
           <button class="btn-ghost" @click="openEdit(t)">编辑</button>
           <button class="btn-danger" @click="remove(t)">删除</button>
+        </div>
+        <div class="card-tip" v-if="t.desc || (t.tags && t.tags.length) || t.detail">
+          <div class="tip-row" v-if="t.desc"><b>描述：</b>{{ t.desc }}</div>
+          <div class="tip-row" v-if="t.tags && t.tags.length"><b>标签：</b>{{ t.tags.join('、') }}</div>
+          <div class="tip-row" v-if="t.detail"><b>详细步骤：</b>{{ t.detail }}</div>
         </div>
       </div>
     </div>
@@ -165,7 +207,13 @@ onMounted(load)
         <h2>{{ editingId ? '编辑工具' : '新增工具' }}</h2>
         <label>名称</label>
         <input v-model="form.name" placeholder="如：Claude Code" />
-        <label>描述</label>
+        <label class="label-row">描述
+          <button class="btn-mini" @click="doGenerate" :disabled="genLoading || !aiAvailable"
+            :title="aiAvailable ? '调用已配置 AI 生成内容' : '请先在「全局AI」配置可用 AI'">
+            {{ genLoading ? '生成中…' : 'AI 生成内容' }}
+          </button>
+        </label>
+        <p v-if="!aiAvailable" class="ai-hint">⚠ 请先在右上角「全局AI」配置一个可用且已填写 API Key 的 AI，才能使用 AI 生成内容。</p>
         <textarea v-model="form.desc" rows="2" placeholder="一句话简介" />
         <label>标签（逗号分隔）</label>
         <input v-model="form.tagsText" placeholder="CLI, 终端" />
@@ -177,6 +225,11 @@ onMounted(load)
         <textarea v-model="form.detailText" rows="4" placeholder="安装：xxx&#10;配置：xxx" />
         <label>排序（数值越小越靠前）</label>
         <input v-model.number="form.sort" type="number" placeholder="0" />
+        <label>状态</label>
+        <select v-model="form.status">
+          <option value="active">可用</option>
+          <option value="inactive">停用</option>
+        </select>
         <label>备注</label>
         <textarea v-model="form.remark" rows="2" placeholder="可选" />
         <div class="modal-actions">
@@ -201,7 +254,7 @@ onMounted(load)
 .plat-card {
   background: var(--glass); border: 1px solid var(--glass-brd);
   border-radius: 14px; padding: 16px; backdrop-filter: blur(12px);
-  cursor: pointer; transition: all .2s ease; outline: none;
+  cursor: pointer; transition: all .2s ease; outline: none; position: relative;
   animation: fadeUp .4s ease both;
 }
 .plat-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(79,209,255,0.12); border-color: rgba(79,209,255,0.4); }
@@ -228,6 +281,20 @@ onMounted(load)
 }
 .copy-btn:hover { background: rgba(79,209,255,0.2); }
 .card-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.card-tip {
+  position: absolute; left: 8px; right: 8px; bottom: calc(100% + 8px);
+  background: #0f1620; border: 1px solid rgba(79,209,255,0.35);
+  border-radius: 10px; padding: 10px 12px; z-index: 20;
+  font-size: 12px; line-height: 1.6; color: var(--text);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  opacity: 0; transform: translateY(6px); pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  white-space: pre-wrap; text-align: left;
+}
+.card-tip .tip-row b { color: var(--accent); font-weight: 600; }
+.plat-card:hover .card-tip { opacity: 1; transform: translateY(0); }
+.plat-card:hover { z-index: 10; }
 .plat-home { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--accent); text-decoration: none; }
 .plat-home:hover { text-decoration: underline; }
 
@@ -244,6 +311,10 @@ onMounted(load)
 .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 4px; }
 
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+.stat-bar { display: flex; gap: 18px; margin: 4px 0 16px; font-size: 13px; color: var(--muted); }
+.stat-bar .stat-item b { color: var(--text); font-size: 15px; margin-left: 4px; }
+.stat-bar .stat-item.ok b { color: #36d399; }
+.stat-bar .stat-item.off b { color: #f59e0b; }
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

@@ -35,6 +35,8 @@ const filtered = computed(() => {
     )
   })
 })
+const activeCount = computed(() => vpns.value.filter((v) => v.status !== 'inactive').length)
+const inactiveCount = computed(() => vpns.value.filter((v) => v.status === 'inactive').length)
 
 const active = ref(null)
 function open(v) { active.value = v }
@@ -42,25 +44,25 @@ function close() { active.value = null }
 
 const showForm = ref(false)
 const editingId = ref(null)
-const form = ref({ name: '', url: '', desc: '', sort: 0, remark: '' })
+const form = ref({ name: '', url: '', desc: '', sort: 0, status: 'active', remark: '' })
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', url: '', desc: '', sort: 0, remark: '' }
+  form.value = { name: '', url: '', desc: '', sort: 0, status: 'active', remark: '' }
   showForm.value = true
 }
 function openEdit(v) {
   editingId.value = v._id
   form.value = {
     name: v.name, url: v.url || '', desc: v.desc || '',
-    sort: v.sort ?? 0, remark: v.remark || ''
+    sort: v.sort ?? 0, status: v.status || 'active', remark: v.remark || ''
   }
   showForm.value = true
 }
 async function save() {
   const payload = {
     name: form.value.name, url: form.value.url, desc: form.value.desc,
-    sort: Number(form.value.sort) || 0, remark: form.value.remark
+    sort: Number(form.value.sort) || 0, status: form.value.status, remark: form.value.remark
   }
   if (editingId.value) await updateVpn(editingId.value, payload)
   else await createVpn(payload)
@@ -89,6 +91,12 @@ onMounted(load)
       <input class="search" v-model="search" placeholder="🔍 搜索名称 / 描述" />
     </div>
 
+    <div class="stat-bar">
+      <span class="stat-item">总数 <b>{{ vpns.length }}</b></span>
+      <span class="stat-item ok">可用 <b>{{ activeCount }}</b></span>
+      <span class="stat-item off">停用 <b>{{ inactiveCount }}</b></span>
+    </div>
+
     <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
     <div v-else-if="!filtered.length" class="empty">暂无推荐，{{ isAdmin ? '点击右上角「新增推荐」' : '敬请期待' }}</div>
 
@@ -104,6 +112,10 @@ onMounted(load)
         <div class="card-actions" v-if="isAdmin" @click.stop>
           <button class="btn-ghost" @click="openEdit(v)">编辑</button>
           <button class="btn-danger" @click="remove(v)">删除</button>
+        </div>
+        <div class="card-tip" v-if="v.desc || v.remark">
+          <div class="tip-row" v-if="v.desc"><b>描述：</b>{{ v.desc }}</div>
+          <div class="tip-row" v-if="v.remark"><b>备注：</b>{{ v.remark }}</div>
         </div>
       </div>
     </div>
@@ -132,6 +144,11 @@ onMounted(load)
         <textarea v-model="form.desc" rows="3" placeholder="一句话介绍" />
         <label>排序（数值越小越靠前）</label>
         <input v-model.number="form.sort" type="number" placeholder="0" />
+        <label>状态</label>
+        <select v-model="form.status">
+          <option value="active">可用</option>
+          <option value="inactive">停用</option>
+        </select>
         <label>备注</label>
         <textarea v-model="form.remark" rows="2" placeholder="可选" />
         <div class="modal-actions">
@@ -156,7 +173,7 @@ onMounted(load)
 .vpn-card {
   background: var(--glass); border: 1px solid var(--glass-brd);
   border-radius: 14px; padding: 16px; backdrop-filter: blur(12px);
-  cursor: pointer; transition: all .2s ease; outline: none;
+  cursor: pointer; transition: all .2s ease; outline: none; position: relative;
   animation: fadeUp .4s ease both;
 }
 .vpn-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(79,209,255,0.12); border-color: rgba(79,209,255,0.4); }
@@ -169,6 +186,20 @@ onMounted(load)
 .vpn-link:hover { text-decoration: underline; }
 .card-actions { display: flex; gap: 8px; margin-top: 12px; }
 
+.card-tip {
+  position: absolute; left: 8px; right: 8px; bottom: calc(100% + 8px);
+  background: #0f1620; border: 1px solid rgba(79,209,255,0.35);
+  border-radius: 10px; padding: 10px 12px; z-index: 20;
+  font-size: 12px; line-height: 1.6; color: var(--text);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  opacity: 0; transform: translateY(6px); pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  white-space: pre-wrap; text-align: left;
+}
+.card-tip .tip-row b { color: var(--accent); font-weight: 600; }
+.vpn-card:hover .card-tip { opacity: 1; transform: translateY(0); }
+.vpn-card:hover { z-index: 10; }
+
 .modal-head { display: flex; align-items: center; justify-content: space-between; }
 .modal-head .x { background: transparent; color: var(--muted); font-size: 18px; padding: 4px 10px; }
 .modal-head .x:hover { color: var(--text); }
@@ -177,6 +208,10 @@ onMounted(load)
 .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 4px; }
 
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+.stat-bar { display: flex; gap: 18px; margin: 4px 0 16px; font-size: 13px; color: var(--muted); }
+.stat-bar .stat-item b { color: var(--text); font-size: 15px; margin-left: 4px; }
+.stat-bar .stat-item.ok b { color: #36d399; }
+.stat-bar .stat-item.off b { color: #f59e0b; }
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

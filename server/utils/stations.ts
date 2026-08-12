@@ -16,9 +16,14 @@ export function sanitize(s: any) {
   return o
 }
 
+// 规范化 baseURL：去掉结尾的 /v1 或 / ，避免拼出 /v1/v1/...
+export function normBase(baseURL: string) {
+  return baseURL.trim().replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+}
+
 // 从 baseURL 拉取模型列表
 export async function fetchModels(baseURL: string, apiKey: string) {
-  const url = baseURL.replace(/\/$/, '') + '/v1/models'
+  const url = normBase(baseURL) + '/v1/models'
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 15000)
   try {

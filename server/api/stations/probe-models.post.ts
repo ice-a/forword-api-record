@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const models = await fetchModels(baseURL, apiKey)
-  if (!models) throw createError({ statusCode: 502, message: '拉取失败，请检查 Base URL 与 API Key' })
+  if (!models) throw createError({ statusCode: 502, message: '拉取失败，请检查 Base URL（无需带 /v1）与 API Key 是否正确、该地址是否支持 /v1/models' })
   if (!models.length) throw createError({ statusCode: 404, message: '接口返回空模型列表' })
 
   return { models }

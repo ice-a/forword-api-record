@@ -2,7 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import {
   fetchStations, verifyPassword, createStation, updateStation,
-  deleteStation, refreshModels, probeModels, healthCheck, setStatus, exportData, importData
+  deleteStation, refreshModels, probeModels, healthCheck, setStatus, exportData, importData,
+  getGlobalAi, setGlobalAi, getGlobalAiAdmin
 } from '~/composables/useApi'
 
 // ============ 数据 ============
@@ -157,10 +158,149 @@ async function load() {
   try {
     stations.value = await fetchStations()
     pingAll()
+    loadGlobalAi()
   } catch (e) {
     showToast('加载失败：' + (e?.data?.message || e.message))
   } finally {
     loading.value = false
+  }
+}
+
+// 全局 AI 配置
+const globalAi = ref({ ready: false, name: '', source: null, models: [] })
+async function loadGlobalAi() {
+  try { globalAi.value = await getGlobalAi() } catch { globalAi.value = { ready: false, name: '', source: null, models: [] } }
+}
+
+// —— 右上角「设置全局 AI」弹窗 ——
+const globalAiOpen = ref(false)
+const gaiForm = reactive({ name: '', baseURL: '', apiKey: '' })
+const gaiUseDefault = ref(false)   // 勾选后 baseURL/key 回退环境变量
+const gaiDefaults = reactive({ baseURL: '', apiKey: '', model: '' })
+const gaiEnvConfigured = ref(false)
+const gaiModels = ref([])      // 全部模型列表
+const gaiSelected = ref('')              // 单选的模型
+const gaiNewModel = ref('')              // 手动添加输入框
+const gaiLoading = ref(false)
+const gaiProbing = ref(false)
+
+// 根据「是否使用默认」返回探测用的 baseURL/key
+function gaiActiveBase() {
+  return gaiUseDefault.value ? (gaiDefaults.baseURL || '') : gaiForm.baseURL.trim()
+}
+function gaiActiveKey() {
+  return gaiUseDefault.value ? (gaiDefaults.apiKey || '') : gaiForm.apiKey.trim()
+}
+
+async function openGlobalAi() {
+  if (!isAdmin.value) return
+  globalAiOpen.value = true
+  gaiLoading.value = true
+  gaiModels.value = []
+  gaiSelected.value = ''
+  gaiNewModel.value = ''
+  try {
+    const r = await getGlobalAiAdmin()
+    gaiDefaults.baseURL = r.defaults?.baseURL || ''
+    gaiDefaults.apiKey = r.defaults?.apiKey || ''
+    gaiDefaults.model = r.defaults?.model || ''
+    gaiEnvConfigured.value = !!r.envConfigured
+    // 若 DB 未存 baseURL/key，则视为「使用环境变量默认」
+    const dbHas = !!(r.name && (r.baseURL || r.apiKey))
+    if (dbHas) {
+      gaiUseDefault.value = false
+      gaiForm.name = r.name || '全局 AI'
+      gaiForm.baseURL = r.baseURL || ''
+      gaiForm.apiKey = r.apiKey || ''
+      gaiModels.value = r.models || []
+      gaiSelected.value = gaiModels.value[0] || ''
+    } else {
+      gaiUseDefault.value = true
+      gaiForm.name = '全局 AI'
+      gaiForm.baseURL = ''
+      gaiForm.apiKey = ''
+      // 使用默认：以环境变量 GLOBAL_AI_MODEL 作为生效模型（无需手动探测）
+      if (gaiDefaults.model) {
+        gaiModels.value = [gaiDefaults.model]
+        gaiSelected.value = gaiDefaults.model
+      }
+    }
+  } catch {
+    showToast('读取全局 AI 配置失败')
+  } finally {
+    gaiLoading.value = false
+  }
+}
+
+function onUseDefaultChange() {
+  // 勾选使用默认：清空表单输入（避免误存覆盖）
+  if (gaiUseDefault.value) {
+    gaiForm.baseURL = ''
+    gaiForm.apiKey = ''
+  }
+}
+
+async function gaiFetchModels() {
+  const base = gaiActiveBase()
+  const key = gaiActiveKey()
+  if (!base) {
+    showToast(gaiUseDefault.value ? '环境变量未设置 Base URL' : '请先填写 Base URL')
+    return
+  }
+  gaiProbing.value = true
+  try {
+    const r = await probeModels({ baseURL: base, apiKey: key })
+    const merged = [...new Set([...gaiModels.value, ...r.models])]
+    gaiModels.value = merged
+    if (!gaiSelected.value && merged.length) gaiSelected.value = merged[0]
+    showToast(`获取到 ${r.models.length} 个模型，请选择一个使用`)
+  } catch (e) {
+    showToast('获取失败：' + (e?.data?.message || e.message))
+  } finally {
+    gaiProbing.value = false
+  }
+}
+
+function gaiAddModel() {
+  const m = gaiNewModel.value.trim()
+  if (!m) return
+  if (!gaiModels.value.includes(m)) gaiModels.value.push(m)
+  if (!gaiSelected.value) gaiSelected.value = m
+  gaiNewModel.value = ''
+}
+
+async function saveGlobalAi() {
+  // 使用默认：允许 baseURL/key 为空（后端回退环境变量）
+  if (!gaiUseDefault.value) {
+    if (!gaiForm.baseURL.trim()) { showToast('Base URL 不能为空'); return }
+  }
+  // 使用默认：baseURL/key/models 均留空，后端纯回退环境变量
+  if (gaiUseDefault.value) {
+    if (!gaiEnvConfigured) { showToast('环境变量未配置，请在部署平台设置 Base URL / Key'); return }
+  } else {
+    if (!gaiForm.baseURL.trim()) { showToast('Base URL 不能为空'); return }
+    if (!gaiSelected.value) { showToast('请先获取并选择一个模型'); return }
+  }
+  gaiLoading.value = true
+  // 选中的模型放数组首位（generate 接口使用 models[0]）；使用默认时不保存，由后端回退环境变量
+  const models = gaiUseDefault.value
+    ? []
+    : [gaiSelected.value, ...gaiModels.value.filter((m) => m !== gaiSelected.value)]
+  try {
+    await setGlobalAi({
+      name: gaiForm.name.trim() || '全局 AI',
+      baseURL: gaiUseDefault.value ? '' : gaiForm.baseURL.trim(),
+      apiKey: gaiUseDefault.value ? '' : gaiForm.apiKey.trim(),
+      models,
+      useDefault: gaiUseDefault.value
+    })
+    globalAiOpen.value = false
+    await loadGlobalAi()
+    showToast('全局 AI 已保存')
+  } catch (e) {
+    showToast('保存失败：' + (e?.data?.message || e.message))
+  } finally {
+    gaiLoading.value = false
   }
 }
 
@@ -374,8 +514,8 @@ onMounted(() => {
       <div class="brand">
         <div class="logo"></div>
         <div>
-          <h1>中转站管理</h1>
-          <div class="sub">Relay Station Manager · OpenAI 兼容</div>
+          <h1>AI 资源台</h1>
+          <div class="sub">AI Resource Hub · 中转站 / 工具 / Skills / VPN</div>
         </div>
       </div>
 
@@ -389,9 +529,7 @@ onMounted(() => {
           背景
         </button>
         <template v-if="isAdmin">
-          <button class="btn-ghost" @click="exportDataFile" title="导出为 JSON">导出</button>
-          <button class="btn-ghost" @click="importFile.click()" title="从 JSON 导入">导入</button>
-          <input ref="importFile" type="file" accept="application/json" style="display:none" @change="importDataFile" />
+          <button class="btn-primary" @click="openGlobalAi" title="设置全局 AI 中转站">全局AI</button>
           <button class="btn-primary" @click="openCreate" v-if="tab === 'stations'">+ 新增中转站</button>
           <button class="btn-ghost" @click="logout">退出后台</button>
         </template>
@@ -414,6 +552,16 @@ onMounted(() => {
         <div class="stat"><span class="num ok">{{ stats.active }}</span><span class="lab">可用</span></div>
         <div class="stat"><span class="num muted">{{ stats.inactive }}</span><span class="lab">停用</span></div>
         <div class="stat"><span class="num">{{ stats.models }}</span><span class="lab">模型数</span></div>
+      </div>
+
+      <div class="global-ai" :class="{ on: globalAi.ready }">
+        <template v-if="globalAi.ready">
+          🤖 全局 AI：<b>{{ globalAi.name }}</b>
+          <span v-if="globalAi.source === 'env'" class="warn">（使用环境变量默认）</span>
+          <span>· 当前模型 {{ (globalAi.models || [])[0] || '—' }}</span>
+          <span class="set-link" v-if="isAdmin" @click="openGlobalAi">修改</span>
+        </template>
+        <template v-else>🤖 尚未配置全局 AI（环境变量或页面中设置后，Skills 生成简介即可使用）</template>
       </div>
 
       <div class="toolbar">
@@ -513,6 +661,57 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 设置全局 AI 弹框 -->
+    <div class="modal-mask" v-if="globalAiOpen" @click.self="globalAiOpen = false">
+      <div class="modal">
+        <h2>设置全局 AI</h2>
+        <p class="hint">该配置将作为 Skills 生成简介等功能的统一 AI。默认读取环境变量 <code>GLOBAL_AI_BASE_URL</code> / <code>GLOBAL_AI_API_KEY</code> / <code>GLOBAL_AI_MODEL</code>；也可在此手动覆盖。</p>
+        <label>名称</label>
+        <input v-model="gaiForm.name" placeholder="如：全局 AI" :disabled="gaiUseDefault" />
+        <label class="chk">
+          <input type="checkbox" v-model="gaiUseDefault" @change="onUseDefaultChange" />
+          使用环境变量默认（GLOBAL_AI_BASE_URL / GLOBAL_AI_API_KEY / GLOBAL_AI_MODEL）
+        </label>
+        <template v-if="gaiUseDefault">
+          <p class="hint env-defaults">
+            当前默认 Base URL：<b>{{ gaiDefaults.baseURL || '（未设置）' }}</b><br />
+            API Key：<b>{{ gaiDefaults.apiKey ? '已设置' : '（未设置）' }}</b><br />
+            默认模型：<b>{{ gaiDefaults.model || '（未设置，将需手动获取）' }}</b>
+            <span v-if="!gaiEnvConfigured" class="warn">（环境变量未配置，请在部署平台设置）</span>
+          </p>
+        </template>
+        <template v-else>
+          <label>Base URL</label>
+          <input v-model="gaiForm.baseURL" placeholder="https://xxx/v1" />
+          <label>API Key</label>
+          <input v-model="gaiForm.apiKey" type="password" placeholder="sk-..." />
+        </template>
+        <label class="label-row">模型（点击「获取模型」后选择一个）
+          <button class="btn-mini" @click="gaiFetchModels" :disabled="gaiProbing || (!gaiUseDefault && !gaiForm.baseURL.trim())">
+            {{ gaiProbing ? '获取中…' : '获取模型' }}
+          </button>
+        </label>
+        <div class="model-list" v-if="gaiModels.length">
+          <label v-for="m in gaiModels" :key="m" class="model-item">
+            <input type="radio" name="gai-model" :value="m" v-model="gaiSelected" />
+            <span>{{ m }}</span>
+            <span class="pick" v-if="gaiSelected === m">已选</span>
+          </label>
+        </div>
+        <p class="hint" v-else>尚未获取模型，请先填写 Base URL / API Key 或勾选使用环境变量默认后点击「获取模型」。</p>
+        <div class="add-model">
+          <input v-model="gaiNewModel" placeholder="手动添加模型名" @keyup.enter="gaiAddModel" />
+          <button class="btn-mini" @click="gaiAddModel">+ 添加</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="globalAiOpen = false" :disabled="gaiLoading">取消</button>
+          <button class="btn-primary" @click="saveGlobalAi" :disabled="gaiLoading">
+            {{ gaiLoading ? '保存中…' : '保存为全局' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 详情弹框 -->
     <div class="modal-mask" v-if="detail" @click.self="detail = null">
       <div class="modal">
@@ -543,6 +742,7 @@ onMounted(() => {
         <label>备注</label>
         <p class="hint">{{ detail.remark || '—' }}</p>
         <div class="modal-actions">
+          <button class="btn-danger" v-if="isAdmin" @click="remove(detail)">删除</button>
           <button class="btn-ghost" @click="detail = null">关闭</button>
         </div>
       </div>
@@ -622,6 +822,15 @@ onMounted(() => {
 .stat .num.muted { color: var(--muted); }
 .stat .lab { font-size: 12px; color: var(--muted); }
 
+.global-ai { font-size: 13px; margin-bottom: 16px; padding: 10px 14px; border-radius: 10px; background: var(--glass); border: 1px solid var(--glass-brd); color: var(--muted); }
+.global-ai.on { color: var(--text); border-color: var(--accent); }
+.global-ai .warn { color: #f59e0b; }
+.btn-global { background: rgba(124,92,255,0.14); border: 1px solid rgba(124,92,255,0.4); color: #b8a6ff; padding: 5px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; white-space: nowrap; flex: 0 0 auto; }
+.btn-global:hover { background: rgba(124,92,255,0.24); }
+.btn-global.on { background: rgba(54,224,164,0.16); border-color: var(--ok); color: var(--ok); cursor: default; }
+.global-ai { position: relative; }
+.global-ai .set-link { margin-left: 10px; color: var(--accent); cursor: pointer; font-size: 12px; text-decoration: underline; }
+
 .toolbar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .search { flex: 1; min-width: 220px; }
 .filter { width: 140px; flex: 0 0 auto; }
@@ -645,4 +854,10 @@ onMounted(() => {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 .muted { color: var(--muted); }
+
+.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 4px 0 8px; }
+.chk input { width: auto; }
+.env-defaults { line-height: 1.7; }
+.env-defaults code, .modal code { background: rgba(126,139,181,0.14); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.env-defaults .warn { color: #f59e0b; }
 </style>

@@ -10,6 +10,8 @@ const stationSchema = new mongoose.Schema({
   models: { type: [String], default: [] },
   balance: { type: String, default: '' },
   status: { type: String, default: 'active' },
+  // 是否作为「全局 AI」配置，供 Skills 生成简介等统一调用（全局唯一）
+  isGlobalAi: { type: Boolean, default: false },
   // 排序权重：数值越小越靠前，相同则按创建时间倒序
   sort: { type: Number, default: 0 },
   // 描述：展示在卡片与详情中

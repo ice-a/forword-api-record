@@ -1,6 +1,6 @@
-# 中转站管理 (Relay Station Manager)
+# AI 资源台 (AI Resource Hub)
 
-Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Serverless 部署到 Vercel。
+Nuxt 3 一体化应用：Vue 3 前端 + Nitro 服务端（MongoDB 代理）+ Serverless 部署到 Vercel。涵盖中转站（OpenAI 兼容接口）、工具配置、Skills 推荐与 VPN 的聚合管理。
 
 ## 技术栈
 

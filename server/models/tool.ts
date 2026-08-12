@@ -8,6 +8,7 @@ const toolSchema = new mongoose.Schema({
   home: { type: String, default: '' },
   detail: { type: [String], default: [] },
   sort: { type: Number, default: 0 },
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
   remark: { type: String, default: '' }
 }, { timestamps: true })
 
