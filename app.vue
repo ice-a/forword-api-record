@@ -10,7 +10,7 @@ const stations = ref([])
 const loading = ref(false)
 const toast = ref('')
 const isAdmin = ref(!!sessionStorage.getItem('admin_pwd'))
-const tab = ref('stations') // stations | platforms
+const tab = ref('stations') // stations | platforms | skills | vpns
 
 // ===== 主题配色 =====
 const THEME_KEY = 'relay_theme_accent'
@@ -403,6 +403,8 @@ onMounted(() => {
     <nav class="tabs">
       <button :class="['tab', tab === 'stations' && 'on']" @click="tab = 'stations'">中转站</button>
       <button :class="['tab', tab === 'platforms' && 'on']" @click="tab = 'platforms'">工具配置</button>
+      <button :class="['tab', tab === 'skills' && 'on']" @click="tab = 'skills'">Skills</button>
+      <button :class="['tab', tab === 'vpns' && 'on']" @click="tab = 'vpns'">VPN</button>
     </nav>
 
     <!-- 中转站 -->
@@ -466,6 +468,8 @@ onMounted(() => {
 
     <!-- 工具配置 -->
     <Platforms v-else-if="tab === 'platforms'" />
+    <Skills v-else-if="tab === 'skills'" />
+    <Vpns v-else-if="tab === 'vpns'" />
 
     <!-- 新增/编辑弹框 -->
     <div class="modal-mask" v-if="showForm" @click.self="showForm = false">

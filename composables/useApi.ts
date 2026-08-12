@@ -81,3 +81,86 @@ export function importData(list: any[]) {
     body: list
   })
 }
+
+// ===== 工具配置 (tools) =====
+export function fetchTools() {
+  return $fetch(`${API_BASE}/tools`)
+}
+export function createTool(data: any) {
+  return $fetch(`${API_BASE}/tools`, {
+    method: 'POST',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+export function updateTool(id: string, data: any) {
+  return $fetch(`${API_BASE}/tools/${id}`, {
+    method: 'PUT',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+export function deleteTool(id: string) {
+  return $fetch(`${API_BASE}/tools/${id}`, {
+    method: 'DELETE',
+    headers: { 'x-admin-password': getToken() }
+  })
+}
+
+// ===== Skills 推荐 (skills) =====
+export function fetchSkills() {
+  return $fetch(`${API_BASE}/skills`)
+}
+export function createSkill(data: any) {
+  return $fetch(`${API_BASE}/skills`, {
+    method: 'POST',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+export function updateSkill(id: string, data: any) {
+  return $fetch(`${API_BASE}/skills/${id}`, {
+    method: 'PUT',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+export function deleteSkill(id: string) {
+  return $fetch(`${API_BASE}/skills/${id}`, {
+    method: 'DELETE',
+    headers: { 'x-admin-password': getToken() }
+  })
+}
+// 调用已配置 AI 为中转站生成简介
+export function generateIntro(data: { name: string; web?: string }) {
+  return $fetch<{ intro: string }>(`${API_BASE}/ai/generate-intro`, {
+    method: 'POST',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+
+// ===== VPN 推荐 (vpns) =====
+export function fetchVpns() {
+  return $fetch(`${API_BASE}/vpns`)
+}
+export function createVpn(data: any) {
+  return $fetch(`${API_BASE}/vpns`, {
+    method: 'POST',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+export function updateVpn(id: string, data: any) {
+  return $fetch(`${API_BASE}/vpns/${id}`, {
+    method: 'PUT',
+    headers: { 'x-admin-password': getToken() },
+    body: data
+  })
+}
+export function deleteVpn(id: string) {
+  return $fetch(`${API_BASE}/vpns/${id}`, {
+    method: 'DELETE',
+    headers: { 'x-admin-password': getToken() }
+  })
+}

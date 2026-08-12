@@ -1,100 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { fetchTools, createTool, updateTool, deleteTool } from '~/composables/useApi'
 
-// 工具卡：仅展示安装方式与官网地址，点击卡片弹出详情
-const tools = [
-  {
-    name: 'Claude Code',
-    desc: 'Anthropic 官方 CLI 编码助手',
-    tags: ['CLI', '终端'],
-    install: 'npm install -g @anthropic-ai/claude-code',
-    home: 'https://claude.com/claude-code',
-    detail: [
-      '安装：npm install -g @anthropic-ai/claude-code',
-      '设置环境变量（使用中转站 baseURL 与 key）：',
-      '  export ANTHROPIC_BASE_URL=<baseURL>',
-      '  export ANTHROPIC_API_KEY=<key>',
-      '启动：claude'
-    ]
-  },
-  {
-    name: 'Codex (OpenAI)',
-    desc: 'OpenAI Codex 命令行编码助手',
-    tags: ['CLI', 'OpenAI'],
-    install: 'npm install -g @openai/codex',
-    home: 'https://github.com/openai/codex',
-    detail: [
-      '安装：npm install -g @openai/codex',
-      '配置环境变量：',
-      '  export OPENAI_BASE_URL=<baseURL>',
-      '  export OPENAI_API_KEY=<key>',
-      '运行：codex "你的需求"'
-    ]
-  },
-  {
-    name: 'OpenCode',
-    desc: '开源终端 AI 编码助手',
-    tags: ['CLI', '开源'],
-    install: 'npm install -g opencode-ai',
-    home: 'https://opencode.ai',
-    detail: [
-      '安装：npm install -g opencode-ai',
-      '配置文件 ~/.config/opencode/opencode.json：',
-      '  "provider": { "baseUrl": "<baseURL>", "apiKey": "<key>", "model": "<model>" }',
-      '或设置环境变量 OPENCODE_BASE_URL / OPENCODE_API_KEY'
-    ]
-  },
-  {
-    name: 'Gemini CLI',
-    desc: 'Google Gemini 命令行编码助手',
-    tags: ['CLI', 'Google'],
-    install: 'npm install -g @google/gemini-cli',
-    home: 'https://github.com/google-gemini/gemini-cli',
-    detail: [
-      '安装：npm install -g @google/gemini-cli',
-      '配置环境变量（兼容 OpenAI 格式中转站）：',
-      '  export GEMINI_API_KEY=<key>',
-      '  export GEMINI_BASE_URL=<baseURL>',
-      '运行：gemini'
-    ]
-  },
-  {
-    name: 'Grok',
-    desc: 'xAI Grok 模型（OpenAI 兼容接入）',
-    tags: ['API', 'xAI'],
-    install: 'npm i -g @xai-official/grok@latest',
-    home: 'https://x.ai/api',
-    detail: [
-      'Grok 提供 OpenAI 兼容接口，可直接复用时中转站：',
-      'Base URL：<baseURL>',
-      'API Key：<key>',
-      '模型名：<model>（如 grok-2 等）',
-      '示例（Python）：',
-      '  from openai import OpenAI',
-      '  client = OpenAI(base_url="<baseURL>", api_key="<key>")',
-      '  client.chat.completions.create(model="<model>", messages=[...])'
-    ]
-  },
-  {
-    name: 'CCSwitch',
-    desc: 'Claude Code 多账号 / 配置切换工具',
-    tags: ['CLI', '切换'],
-    install: 'npm install -g ccswitch',
-    home: 'https://github.com/farion1231/cc-switch',
-    detail: [
-      '安装：npm install -g ccswitch',
-      '在配置中填入中转站 baseURL 与 key：',
-      '  Base URL：<baseURL>',
-      '  API Key：<key>',
-      '通过 ccswitch 在多个账号 / 配置间快速切换'
-    ]
-  }
-]
-
-const active = ref(null)
-function open(t) { active.value = t }
-function close() { active.value = null }
-
+const isAdmin = ref(!!sessionStorage.getItem('admin_pwd'))
+const tools = ref([])
+const loading = ref(false)
 const toast = ref('')
 let toastTimer
 function showToast(msg) {
@@ -102,14 +12,89 @@ function showToast(msg) {
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => (toast.value = ''), 1800)
 }
+
+async function load() {
+  loading.value = true
+  try {
+    tools.value = await fetchTools()
+  } catch (e) {
+    showToast('加载失败：' + (e?.data?.message || e.message))
+  } finally {
+    loading.value = false
+  }
+}
+
+// ===== 搜索 =====
+const search = ref('')
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return tools.value
+  return tools.value.filter((t) => {
+    return (
+      t.name?.toLowerCase().includes(q) ||
+      t.desc?.toLowerCase().includes(q) ||
+      (t.tags || []).some((tag) => tag.toLowerCase().includes(q))
+    )
+  })
+})
+
+// ===== 复制 =====
 async function copy(text) {
   try {
     await navigator.clipboard.writeText(text)
-    showToast('已复制安装命令')
+    showToast('已复制')
   } catch {
     showToast('复制失败，请手动复制')
   }
 }
+
+// ===== 详情 =====
+const active = ref(null)
+function open(t) { active.value = t }
+function close() { active.value = null }
+
+// ===== 增删改 =====
+const showForm = ref(false)
+const editingId = ref(null)
+const form = ref({ name: '', desc: '', tagsText: '', install: '', home: '', detailText: '', sort: 0, remark: '' })
+
+function openCreate() {
+  editingId.value = null
+  form.value = { name: '', desc: '', tagsText: '', install: '', home: '', detailText: '', sort: 0, remark: '' }
+  showForm.value = true
+}
+function openEdit(t) {
+  editingId.value = t._id
+  form.value = {
+    name: t.name, desc: t.desc || '', tagsText: (t.tags || []).join(', '),
+    install: t.install || '', home: t.home || '',
+    detailText: (t.detail || []).join('\n'), sort: t.sort ?? 0, remark: t.remark || ''
+  }
+  showForm.value = true
+}
+async function save() {
+  const payload = {
+    name: form.value.name,
+    desc: form.value.desc,
+    tags: form.value.tagsText.split(',').map((x) => x.trim()).filter(Boolean),
+    install: form.value.install,
+    home: form.value.home,
+    detail: form.value.detailText.split('\n').map((x) => x.trim()).filter(Boolean),
+    sort: Number(form.value.sort) || 0,
+    remark: form.value.remark
+  }
+  if (editingId.value) await updateTool(editingId.value, payload)
+  else await createTool(payload)
+  showForm.value = false
+  load()
+}
+async function remove(t) {
+  if (!confirm(`确认删除「${t.name}」？`)) return
+  await deleteTool(t._id)
+  load()
+}
+
+onMounted(load)
 </script>
 
 <template>
@@ -117,8 +102,19 @@ async function copy(text) {
     <h2 style="font-size:19px;margin:0 0 6px;">工具配置</h2>
     <p class="ph">以下为各 AI 编码工具的安装方式与官网地址，点击卡片查看详细配置步骤。</p>
 
+    <div class="toolbar" v-if="isAdmin">
+      <input class="search" v-model="search" placeholder="🔍 搜索工具名称 / 描述 / 标签" />
+      <button class="btn-primary" @click="openCreate">+ 新增工具</button>
+    </div>
+    <div class="toolbar" v-else>
+      <input class="search" v-model="search" placeholder="🔍 搜索工具名称 / 描述 / 标签" />
+    </div>
+
+    <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
+    <div v-else-if="!filtered.length" class="empty">暂无工具，{{ isAdmin ? '点击右上角「新增工具」' : '敬请期待' }}</div>
+
     <div class="plat-grid">
-      <div class="plat-card" v-for="t in tools" :key="t.name" @click="open(t)" tabindex="0"
+      <div class="plat-card" v-for="t in filtered" :key="t._id" @click="open(t)" tabindex="0"
            @keyup.enter="open(t)">
         <div class="plat-head">
           <span class="plat-name">{{ t.name }}</span>
@@ -126,14 +122,18 @@ async function copy(text) {
         </div>
         <div class="plat-desc">{{ t.desc }}</div>
         <div class="plat-tags">
-          <span class="tag" v-for="tag in t.tags" :key="tag">{{ tag }}</span>
+          <span class="tag" v-for="tag in (t.tags || [])" :key="tag">{{ tag }}</span>
         </div>
-        <div class="plat-install">
+        <div class="plat-install" v-if="t.install">
           <span class="k">安装</span>
           <code @click.stop="copy(t.install)" :title="'点击复制：' + t.install">{{ t.install }}</code>
           <button class="copy-btn" @click.stop="copy(t.install)">复制</button>
         </div>
-        <a class="plat-home" :href="t.home" target="_blank" @click.stop>官网 ↗</a>
+        <a class="plat-home" :href="t.home" target="_blank" @click.stop v-if="t.home">官网 ↗</a>
+        <div class="card-actions" v-if="isAdmin" @click.stop>
+          <button class="btn-ghost" @click="openEdit(t)">编辑</button>
+          <button class="btn-danger" @click="remove(t)">删除</button>
+        </div>
       </div>
     </div>
 
@@ -152,10 +152,37 @@ async function copy(text) {
         </div>
 
         <label>官网地址</label>
-        <a class="home-link" :href="active.home" target="_blank">{{ active.home }} ↗</a>
+        <a class="home-link" :href="active.home" target="_blank" v-if="active.home">{{ active.home }} ↗</a>
+        <span class="muted" v-else>—</span>
 
         <label>详细配置步骤</label>
-        <pre class="detail">{{ active.detail.join('\n') }}</pre>
+        <pre class="detail">{{ (active.detail || []).join('\n') }}</pre>
+      </div>
+    </div>
+
+    <div class="modal-mask" v-if="showForm" @click.self="showForm = false">
+      <div class="modal">
+        <h2>{{ editingId ? '编辑工具' : '新增工具' }}</h2>
+        <label>名称</label>
+        <input v-model="form.name" placeholder="如：Claude Code" />
+        <label>描述</label>
+        <textarea v-model="form.desc" rows="2" placeholder="一句话简介" />
+        <label>标签（逗号分隔）</label>
+        <input v-model="form.tagsText" placeholder="CLI, 终端" />
+        <label>安装命令</label>
+        <input v-model="form.install" placeholder="npm install -g xxx" />
+        <label>官网地址</label>
+        <input v-model="form.home" placeholder="https://..." />
+        <label>详细配置步骤（每行一条）</label>
+        <textarea v-model="form.detailText" rows="4" placeholder="安装：xxx&#10;配置：xxx" />
+        <label>排序（数值越小越靠前）</label>
+        <input v-model.number="form.sort" type="number" placeholder="0" />
+        <label>备注</label>
+        <textarea v-model="form.remark" rows="2" placeholder="可选" />
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="showForm = false">取消</button>
+          <button class="btn-primary" @click="save">保存</button>
+        </div>
       </div>
     </div>
 
@@ -165,9 +192,11 @@ async function copy(text) {
 
 <style scoped>
 .ph { color: var(--muted); font-size: 13px; }
+.toolbar { display: flex; gap: 10px; margin: 14px 0 18px; flex-wrap: wrap; }
+.search { flex: 1; min-width: 220px; }
 .plat-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px; margin-top: 18px;
+  gap: 16px;
 }
 .plat-card {
   background: var(--glass); border: 1px solid var(--glass-brd);
@@ -198,9 +227,7 @@ async function copy(text) {
   border: 1px solid rgba(79,209,255,0.3);
 }
 .copy-btn:hover { background: rgba(79,209,255,0.2); }
-.code-row { display: flex; gap: 8px; align-items: stretch; }
-.code-row .code { flex: 1; }
-.code-row .copy-btn { align-self: flex-start; }
+.card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .plat-home { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--accent); text-decoration: none; }
 .plat-home:hover { text-decoration: underline; }
 
@@ -215,6 +242,10 @@ async function copy(text) {
   color: var(--text); white-space: pre-wrap; word-break: break-all; margin: 0;
 }
 .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 4px; }
+
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
